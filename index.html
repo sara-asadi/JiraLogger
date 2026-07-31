@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jira Logger</title>
+    <link rel="icon" type="image/png" href="build/icon.png" />
+    <script defer src="renderer.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+
+    <style>
+      body {
+        background-color: #f5f5f5;
+      }
+      .table-container {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      .table {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+      }
+      thead {
+        display: flex;
+        flex: 0 0 auto;
+        width: 100%;
+      }
+      tbody {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        width: 100%;
+      }
+      tr {
+        display: flex;
+        width: 100%;
+      }
+      th,
+      td {
+        padding: 12px;
+        text-align: left;
+        border: 1px solid #ddd;
+      }
+      th {
+        background-color: #11ddaa;
+        color: white;
+      }
+      th:nth-child(2),
+      th:nth-child(3),
+      td:nth-child(2),
+      td:nth-child(3) {
+        flex: 2;
+      }
+      th:not(:nth-child(2), :nth-child(3)),
+      td:not(:nth-child(2), :nth-child(3)) {
+        flex: 1;
+      }
+      .action {
+        width: 50px;
+      }
+      .buttons .button {
+        border-radius: 8px;
+        font-weight: bold;
+        transition: all 0.3s ease-in-out;
+      }
+      .buttons .button:hover {
+        transform: scale(1.05);
+      }
+      .buttons {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+      }
+      #on-meeting-label {
+        cursor: pointer;
+        border-radius: 8px;
+        font-weight: bold;
+        transition: all 0.3s ease-in-out;
+        user-select: none;
+      }
+
+      #on-meeting:checked + #on-meeting-label,
+      #on-meeting-label.active {
+        background-color: #d15e00;
+        color: white;
+        border-color: transparent;
+        transform: scale(1.05);
+      }
+
+      body.dark {
+        background-color: #121212;
+        color: #e0e0e0;
+      }
+
+      body.dark .table-container {
+        background: #1e1e1e;
+        color: #e0e0e0;
+      }
+
+      body.dark table {
+        color: #e0e0e0;
+      }
+
+      body.dark th {
+        background-color: #00796b;
+        color: white;
+      }
+
+      body.dark td {
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+      }
+
+      body.dark tr:nth-child(even) td {
+        background-color: #232323;
+      }
+
+      body.dark tr:hover td {
+        background-color: #2c2c2c;
+      }
+
+      body.dark .table td,
+      body.dark .table th {
+        border-color: #444;
+      }
+
+      body.dark .button.is-light {
+        background-color: #333;
+        color: #e0e0e0;
+      }
+
+      body.dark .modal-card {
+        background-color: #1e1e1e;
+      }
+
+      body.dark .modal-card-head,
+      body.dark .modal-card-foot {
+        background-color: #2c2c2c;
+        border-color: #444;
+      }
+
+      body.dark .modal-card-body {
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+      }
+
+      body.dark .modal-background {
+        background-color: rgba(10, 10, 10, 0.86);
+      }
+
+      body.dark .modal-card-title,
+      body.dark .label {
+        color: #e0e0e0;
+      }
+
+      body.dark .input,
+      body.dark .select select {
+        background-color: #2c2c2c;
+        color: #e0e0e0;
+        border-color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="section">
+      <div class="header">
+        <button
+          class="button is-white is-rounded"
+          aria-label="Settings"
+          title="Settings"
+          onclick="openSettings()"
+        >
+          <span class="icon is-small">
+            <i class="fas fa-cog"></i>
+          </span>
+        </button>
+        <button
+          class="button is-dark is-rounded"
+          aria-label="Toggle Theme"
+          title="Toggle Dark Theme"
+          onclick="toggleDarkTheme()"
+        >
+          <span class="icon is-small">
+            <i class="fas fa-moon"></i>
+          </span>
+        </button>
+      </div>
+      <div class="container">
+        <h1 class="title has-text-centered has-text-primary">Jira Logger</h1>
+        <div class="buttons">
+          <button class="button is-primary" onclick="renderIssues()">
+            Load Issues
+          </button>
+          <button class="button is-success" onclick="logAllTimers()">
+            Log All Time
+          </button>
+          <label
+            id="on-meeting-label"
+            class="button is-light"
+            title="Keep the timer running during meetings even when you're not moving the mouse"
+          >
+            <input type="checkbox" id="on-meeting" style="display: none" />
+            On Meeting
+          </label>
+        </div>
+
+        <div class="table-container">
+          <table class="table is-striped is-hoverable">
+            <thead>
+              <tr>
+                <th>Key</th>
+                <th>Parent</th>
+                <th>Title</th>
+                <th>Type</th>
+                <th>State</th>
+                <th>Time Spent</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="issues-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="modal" id="config-modal">
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">Enter Jira Credentials</p>
+        </header>
+        <section class="modal-card-body">
+          <div class="field">
+            <label class="label">Username</label>
+            <div class="control">
+              <input
+                class="input"
+                id="username-input"
+                type="text"
+                placeholder="Jira username"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Password</label>
+            <div class="control">
+              <input
+                class="input"
+                id="password-input"
+                type="password"
+                placeholder="Jira password"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">API Token / PAT (optional)</label>
+            <div class="control">
+              <input
+                class="input"
+                id="token-input"
+                type="password"
+                placeholder="Use if password auth is unavailable"
+              />
+            </div>
+            <p class="help">
+              Prefer username + password. Token is used as Bearer (DC PAT), or
+              Basic with username if Bearer fails.
+            </p>
+          </div>
+        </section>
+        <footer class="modal-card-foot">
+          <button class="button is-success" onclick="submitCredentials()">
+            Save
+          </button>
+        </footer>
+        <p class="has-text-danger has-text-centered" id="config-error"></p>
+      </div>
+    </div>
+
+    <div class="modal" id="settings-modal">
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">Settings</p>
+          <button
+            class="delete"
+            aria-label="close"
+            id="closeModalBtn"
+            onclick="closeSettings()"
+          ></button>
+        </header>
+        <section class="modal-card-body">
+          <div class="field">
+            <label class="label">Project filter (optional)</label>
+            <div class="control">
+              <div class="select is-fullwidth">
+                <select id="projectSelector" disabled>
+                  <option>Loading projects...</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+        <footer class="modal-card-foot">
+          <button class="button is-success" onclick="submitProject()">
+            Save
+          </button>
+        </footer>
+      </div>
+    </div>
+    <div class="modal" id="idle-alert-modal">
+      <div class="modal-background" onclick="closeIdleAlert()"></div>
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">Timer stopped</p>
+        </header>
+        <section class="modal-card-body">
+          <p>
+            The running timer was stopped after 5 minutes of inactivity. Please
+            track your time.
+          </p>
+        </section>
+        <footer class="modal-card-foot">
+          <button class="button is-primary" onclick="closeIdleAlert()">OK</button>
+        </footer>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,59 @@
+{
+  "name": "JiraLogger",
+  "version": "1.0.0",
+  "description": "Track and log time to Jira sprint issues",
+  "author": {
+    "name": "Sara Asadi",
+    "email": "saraas@systemgroup.net"
+  },
+  "homepage": "https://mars-jira.systemgroup.net",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "build": "npm run build:linux && npm run build:win",
+    "build:linux": "electron-builder --linux",
+    "build:win": "electron-builder --win zip",
+    "build:win:installer": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "net.systemgroup.jira-logger",
+    "productName": "Jira Logger",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/*/{test,__tests__}/**",
+      "!dist/**"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "icons",
+      "category": "Office",
+      "maintainer": "Sara Asadi <saraas@systemgroup.net>"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "electron-log": "^5.3.3",
+    "electron-store": "^8.2.0"
+  }
+}
