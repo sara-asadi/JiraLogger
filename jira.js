@@ -206,6 +206,14 @@ function buildSearchJql() {
   return jql;
 }
 
+function toJiraError(error) {
+  const status = error.response && error.response.status;
+  const wrapped = new Error(formatJiraError(error));
+  wrapped.status = status;
+  wrapped.isAuthError = status === 401 || status === 403;
+  return wrapped;
+}
+
 function formatJiraError(error) {
   const status = error.response && error.response.status;
   const data = error.response && error.response.data;
@@ -254,10 +262,10 @@ async function searchIssues(jql) {
       if (status === 404 || status === 405 || status === 403) {
         continue;
       }
-      throw new Error(formatJiraError(error));
+      throw toJiraError(error);
     }
   }
-  throw new Error(formatJiraError(lastError));
+  throw toJiraError(lastError);
 }
 
 function mapIssue(issue) {

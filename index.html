@@ -260,21 +260,10 @@
                 placeholder="Jira password"
               />
             </div>
-          </div>
-          <div class="field">
-            <label class="label">API Token / PAT (optional)</label>
-            <div class="control">
-              <input
-                class="input"
-                id="token-input"
-                type="password"
-                placeholder="Use if password auth is unavailable"
-              />
-            </div>
-            <p class="help">
-              Prefer username + password. Token is used as Bearer (DC PAT), or
-              Basic with username if Bearer fails.
-            </p>
+            <label class="checkbox mt-2">
+              <input type="checkbox" id="show-password" onchange="togglePasswordVisibility()" />
+              Show password
+            </label>
           </div>
         </section>
         <footer class="modal-card-foot">

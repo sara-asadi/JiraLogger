@@ -110,6 +110,12 @@ async function renderIssues() {
     }
   } catch (error) {
     console.error("Failed to load issues:", error);
+    if (error.isAuthError) {
+      openCredentialsModal(
+        "Authentication failed. Please enter your current password."
+      );
+      return;
+    }
     alert(error.message || "Failed to load issues.");
   }
 }
@@ -249,28 +255,47 @@ function toggleButtons(key, isRunning) {
   }
 }
 
+function togglePasswordVisibility() {
+  const passwordInput = document.getElementById("password-input");
+  const showing = document.getElementById("show-password").checked;
+  passwordInput.type = showing ? "text" : "password";
+}
+
+function openCredentialsModal(message = "") {
+  const errorEl = document.getElementById("config-error");
+  errorEl.innerText = message;
+  document.getElementById("password-input").value = "";
+  document.getElementById("show-password").checked = false;
+  togglePasswordVisibility();
+
+  ipcRenderer.once("send-config", (_event, config) => {
+    if (config.username) {
+      document.getElementById("username-input").value = config.username;
+    }
+  });
+  ipcRenderer.send("get-config");
+
+  document.getElementById("config-modal").classList.add("is-active");
+}
+
 async function submitCredentials() {
-  const token = document.getElementById("token-input").value.trim();
   const username = document.getElementById("username-input").value.trim();
   const password = document.getElementById("password-input").value.trim();
   const errorEl = document.getElementById("config-error");
 
-  if (!(username && password) && !token) {
-    return alert(
-      "Please enter username and password, or an API token / PAT."
-    );
+  if (!(username && password)) {
+    return alert("Please enter username and password.");
   }
 
   try {
     const profile = await validateJiraCredentials({
-      token,
       username,
       password,
     });
     ipcRenderer.send("save-config", {
-      token: username && password ? "" : token,
+      token: "",
       username,
-      password: username && password ? password : "",
+      password,
       authType: profile.authType,
       accountId: profile.accountId || profile.key || profile.name,
       name: profile.name,
@@ -331,7 +356,7 @@ ipcRenderer.on("load-timers", (_event, saved) => {
 });
 
 ipcRenderer.on("show-config-modal", () => {
-  document.getElementById("config-modal").classList.add("is-active");
+  openCredentialsModal();
 });
 
 ipcRenderer.on("show-idle-alert", () => {
@@ -351,6 +376,7 @@ window.startTimer = startTimer;
 window.stopTimer = stopTimer;
 window.resetTimer = resetTimer;
 window.submitCredentials = submitCredentials;
+window.togglePasswordVisibility = togglePasswordVisibility;
 window.renderIssues = renderIssues;
 window.logAllTimers = logAllTimers;
 window.openSettings = openSettings;

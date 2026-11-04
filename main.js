@@ -165,14 +165,6 @@ ipcMain.on("save-config", (_event, config) => {
     configStore.set("username", config.username);
     configStore.set("password", config.password);
     configStore.delete("token");
-  } else if (config.token) {
-    configStore.set("token", config.token);
-    if (config.username) {
-      configStore.set("username", config.username);
-    } else {
-      configStore.delete("username");
-    }
-    configStore.delete("password");
   }
   if (config.authType) {
     configStore.set("authType", config.authType);
