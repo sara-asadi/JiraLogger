@@ -4,6 +4,9 @@ const {
   logTimeForWorkItem,
   validateJiraCredentials,
   getProjects,
+  createSubtask,
+  fetchOpenSprintStories,
+  getSubtaskRequiredOptions,
 } = require("./jira");
 const { ipcRenderer } = require("electron");
 
@@ -159,6 +162,129 @@ async function submitProject() {
   });
 
   closeSettings();
+}
+
+async function loadParentOptions() {
+  const select = document.getElementById("subtask-parent-input");
+  const errorEl = document.getElementById("subtask-error");
+  select.disabled = true;
+  select.innerHTML = '<option value="">Loading issues...</option>';
+  errorEl.innerText = "";
+
+  try {
+    const stories = await fetchOpenSprintStories();
+    select.innerHTML = '<option value="">Select a parent issue</option>';
+    if (!stories.length) {
+      errorEl.innerText = "No open issues in the current sprint.";
+    }
+    for (const issue of stories) {
+      select.appendChild(
+        new Option(`${issue.key} [${issue.issueType}] — ${issue.title}`, issue.key)
+      );
+    }
+    select.disabled = false;
+  } catch (error) {
+    console.error("Failed to load parent issues:", error);
+    select.innerHTML = '<option value="">No issues available</option>';
+    errorEl.innerText = error.message || "Failed to load sprint issues.";
+  }
+}
+
+async function loadSubtaskFields() {
+  const parentKey = document.getElementById("subtask-parent-input").value;
+  const container = document.getElementById("subtask-extra-fields");
+  const errorEl = document.getElementById("subtask-error");
+  container.innerHTML = "";
+  errorEl.innerText = "";
+  if (!parentKey) return;
+
+  try {
+    const fields = await getSubtaskRequiredOptions(parentKey);
+    for (const field of fields) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "field";
+
+      const label = document.createElement("label");
+      label.className = "label";
+      label.textContent = `${field.name} (required)`;
+
+      const control = document.createElement("div");
+      control.className = "select is-fullwidth";
+
+      const select = document.createElement("select");
+      select.dataset.fieldId = field.fieldId;
+      select.dataset.fieldName = field.name;
+      select.appendChild(new Option(`Select ${field.name}`, ""));
+      for (const opt of field.options) {
+        select.appendChild(new Option(opt.label, opt.id));
+      }
+
+      control.appendChild(select);
+      wrapper.append(label, control);
+      container.appendChild(wrapper);
+    }
+  } catch (error) {
+    console.error("Failed to load sub-task fields:", error);
+    errorEl.innerText = error.message || "Failed to load sub-task fields.";
+  }
+}
+
+document
+  .getElementById("subtask-parent-input")
+  .addEventListener("change", loadSubtaskFields);
+
+function openSubtaskForm() {
+  document.getElementById("subtask-modal").classList.add("is-active");
+  document.getElementById("subtask-summary-input").value = "";
+  document.getElementById("subtask-extra-fields").innerHTML = "";
+  document.getElementById("subtask-error").innerText = "";
+  loadParentOptions();
+}
+
+function closeSubtaskModal() {
+  document.getElementById("subtask-modal").classList.remove("is-active");
+}
+
+async function submitSubtask() {
+  const parentSelect = document.getElementById("subtask-parent-input");
+  const summaryInput = document.getElementById("subtask-summary-input");
+  const errorEl = document.getElementById("subtask-error");
+  errorEl.innerText = "";
+
+  if (!parentSelect.value) {
+    errorEl.innerText = "Please select a parent issue.";
+    return;
+  }
+
+  const extraFields = {};
+  for (const select of document.querySelectorAll("#subtask-extra-fields select")) {
+    if (!select.value) {
+      errorEl.innerText = `Please select ${select.dataset.fieldName}.`;
+      return;
+    }
+    extraFields[select.dataset.fieldId] = { id: select.value };
+  }
+
+  try {
+    const created = await createSubtask(
+      parentSelect.value,
+      summaryInput.value,
+      extraFields
+    );
+    alert(`Created sub-task ${created.key}`);
+    parentSelect.value = "";
+    summaryInput.value = "";
+    document.getElementById("subtask-extra-fields").innerHTML = "";
+  } catch (error) {
+    if (error.isAuthError) {
+      closeSubtaskModal();
+      openCredentialsModal(
+        "Authentication failed. Please enter your current password."
+      );
+      return;
+    }
+    errorEl.innerText = error.message || "Failed to create sub-task.";
+  }
 }
 
 async function closeSettings() {
@@ -382,4 +508,7 @@ window.logAllTimers = logAllTimers;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 window.submitProject = submitProject;
+window.submitSubtask = submitSubtask;
+window.openSubtaskForm = openSubtaskForm;
+window.closeSubtaskModal = closeSubtaskModal;
 window.toggleDarkTheme = toggleDarkTheme;

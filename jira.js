@@ -309,6 +309,21 @@ async function fetchOpenSprintIssues() {
   return issues;
 }
 
+async function fetchOpenSprintStories() {
+  await ensureConfig();
+  let jql =
+    "resolution = Unresolved AND statusCategory != Done AND sprint in openSprints() ORDER BY rank";
+  if (jiraInfo.project) {
+    jql = `project = "${jiraInfo.project}" AND ${jql}`;
+  }
+  const data = await searchIssues(jql);
+  const allowedTypes = ["story", "task", "defect", "technical story"];
+  return (data.issues || [])
+    .filter((i) => !isClosedIssue(i))
+    .map(mapIssue)
+    .filter((i) => allowedTypes.includes(String(i.issueType || "").toLowerCase()));
+}
+
 function formatJiraStarted(date = new Date()) {
   const pad = (n) => String(n).padStart(2, "0");
   const offsetMin = -date.getTimezoneOffset();
@@ -356,9 +371,100 @@ async function logTimeForWorkItem(issueKey, timer) {
   }
 }
 
+async function getSubtaskIssueType(projectKey) {
+  try {
+    const response = await jiraAxios.get(
+      `${jiraInfo.baseUrl}/rest/api/2/issue/createmeta/${encodeURIComponent(projectKey)}/issuetypes`,
+      { headers: getAuthHeaders() }
+    );
+    const types = response.data.values || response.data.issueTypes || [];
+    return types.find((t) => t.subtask) || null;
+  } catch (error) {
+    console.error("createmeta lookup failed:", error.response && error.response.data);
+    throw toJiraError(error);
+  }
+}
+
+function resolveSubtaskProject(parentKey) {
+  if (jiraInfo.project) return jiraInfo.project;
+  return String(parentKey || "").trim().toUpperCase().split("-")[0];
+}
+
+async function getSubtaskRequiredOptions(parentKey) {
+  await ensureConfig();
+
+  const key = String(parentKey || "").trim().toUpperCase();
+  if (!key) return [];
+
+  const projectKey = resolveSubtaskProject(key);
+  const subtaskType = await getSubtaskIssueType(projectKey);
+  if (!subtaskType) return [];
+
+  try {
+    const response = await jiraAxios.get(
+      `${jiraInfo.baseUrl}/rest/api/2/issue/createmeta/${encodeURIComponent(projectKey)}/issuetypes/${subtaskType.id}`,
+      { headers: getAuthHeaders() }
+    );
+    const fields = response.data.values || [];
+    return fields
+      .filter((f) => f.required && Array.isArray(f.allowedValues) && f.allowedValues.length)
+      .map((f) => ({
+        fieldId: f.fieldId,
+        name: f.name,
+        options: f.allowedValues.map((v) => ({
+          id: v.id,
+          label: v.value || v.name || v.id,
+        })),
+      }));
+  } catch (error) {
+    throw toJiraError(error);
+  }
+}
+
+async function createSubtask(parentKey, summary, extraFields = {}) {
+  await ensureConfig();
+
+  const key = String(parentKey || "").trim().toUpperCase();
+  const text = String(summary || "").trim();
+  if (!key || !text) {
+    throw new Error("Parent issue key and summary are required.");
+  }
+
+  const projectKey = resolveSubtaskProject(key);
+  const subtaskType = await getSubtaskIssueType(projectKey);
+  if (!subtaskType) {
+    throw new Error(`No sub-task issue type found in project ${projectKey}.`);
+  }
+
+  const payload = {
+    fields: {
+      project: { key: projectKey },
+      parent: { key },
+      summary: text,
+      issuetype: { id: subtaskType.id },
+      ...extraFields,
+    },
+  };
+
+  try {
+    const response = await jiraAxios.post(
+      `${jiraInfo.baseUrl}/rest/api/2/issue`,
+      payload,
+      { headers: getAuthHeaders() }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Sub-task create failed:", error.response && error.response.data, "payload:", JSON.stringify(payload));
+    throw toJiraError(error);
+  }
+}
+
 module.exports = {
   fetchOpenSprintIssues,
   logTimeForWorkItem,
   validateJiraCredentials,
   getProjects,
+  createSubtask,
+  getSubtaskRequiredOptions,
+  fetchOpenSprintStories,
 };
