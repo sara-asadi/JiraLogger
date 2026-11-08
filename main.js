@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, powerMonitor } = require("electron");
+const { app, BrowserWindow, ipcMain, powerMonitor, Menu, Tray, nativeImage } = require("electron");
 const fs = require("fs");
 const path = require("node:path");
 const Store = require("electron-store");
@@ -18,6 +18,8 @@ const IDLE_STOP_SECONDS = 300;
 const IDLE_CHECK_INTERVAL_MS = 10000;
 
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 let hasBeenIdle = false;
 let idelingEnabled = true;
 let idleStopSent = false;
@@ -35,6 +37,7 @@ function sendToRenderer(channel, ...args) {
 function createMainWindow() {
   if (isMainWindowAlive()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
     mainWindow.focus();
     return;
   }
@@ -44,10 +47,12 @@ function createMainWindow() {
     width: 1000,
     height: 800,
     icon: iconPath,
+    skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: true,
       contextIsolation: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -68,9 +73,33 @@ function createMainWindow() {
     }
   });
 
+  mainWindow.on("minimize", () => {
+    mainWindow.hide();
+  });
+
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    sendToRenderer("saving-timers");
+    mainWindow.hide();
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+}
+
+function createTray() {
+  const iconPath = path.join(__dirname, "build", "icon.png");
+  const icon = nativeImage.createFromPath(iconPath).resize({ width: 24, height: 24 });
+  tray = new Tray(icon);
+  tray.setToolTip("Jira Logger");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Jira Logger", click: createMainWindow },
+    { type: "separator" },
+    { label: "Quit", click: () => app.quit() },
+  ]));
+  tray.on("click", createMainWindow);
 }
 
 function stopTimerDueToIdle() {
@@ -148,8 +177,13 @@ ipcMain.on("user-activity", () => {
 });
 
 app.whenReady().then(() => {
+  createTray();
   createMainWindow();
   startIdleMonitoring();
+});
+
+app.on("before-quit", () => {
+  isQuitting = true;
 });
 
 app.on("window-all-closed", () => {
