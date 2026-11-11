@@ -1,6 +1,6 @@
 {
   "name": "JiraLogger",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Track and log time to Jira sprint issues",
   "author": {
     "name": "Sara Asadi",

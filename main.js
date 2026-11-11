@@ -1,9 +1,11 @@
 const { app, BrowserWindow, ipcMain, powerMonitor, Menu, Tray, nativeImage } = require("electron");
 const fs = require("fs");
+const http = require("http");
 const path = require("node:path");
 const Store = require("electron-store");
 const log = require("electron-log");
 const { getIdleSeconds, recordActivity, isUserActive } = require("./idleMonitor");
+const { loadTimers, saveTimers, deleteDayLog, listLogs, getTodayKey } = require("./fileManager");
 
 process.on("uncaughtException", (error) => {
   log.error("Uncaught Exception:", error);
@@ -12,7 +14,6 @@ process.on("uncaughtException", (error) => {
 log.info("App starting...");
 
 const configStore = new Store({ name: "config" });
-const timerFilePath = "./jiraLogger.json";
 
 const IDLE_STOP_SECONDS = 300;
 const IDLE_CHECK_INTERVAL_MS = 10000;
@@ -176,10 +177,78 @@ ipcMain.on("user-activity", () => {
   recordActivity();
 });
 
+const LOG_API_PORT = 3456;
+
+function startLogApiServer() {
+  const server = http.createServer((req, res) => {
+    res.setHeader("Content-Type", "application/json");
+
+    const url = new URL(req.url, `http://localhost:${LOG_API_PORT}`);
+    const segments = url.pathname.replace(/^\/+|\/+$/g, "").split("/");
+
+    if (segments[0] !== "logs") {
+      res.writeHead(404);
+      return res.end(JSON.stringify({ error: "Not found. Use /logs" }));
+    }
+
+    const dateParam = segments[1] || null;
+
+    if (req.method === "GET") {
+      if (dateParam) {
+        const data = loadTimers(dateParam);
+        res.writeHead(200);
+        return res.end(JSON.stringify({ date: dateParam, data }));
+      }
+      const days = listLogs();
+      const all = {};
+      for (const d of days) {
+        all[d] = loadTimers(d);
+      }
+      res.writeHead(200);
+      return res.end(JSON.stringify({ days, logs: all }));
+    }
+
+    if (req.method === "DELETE") {
+      const target = dateParam || getTodayKey();
+      const deleted = deleteDayLog(target);
+      res.writeHead(deleted ? 200 : 404);
+      return res.end(JSON.stringify({ date: target, deleted }));
+    }
+
+    if (req.method === "POST" || req.method === "PUT") {
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => {
+        try {
+          const data = JSON.parse(body);
+          const target = dateParam || getTodayKey();
+          const existing = loadTimers(target);
+          const merged = { ...existing, ...data };
+          saveTimers(merged, target);
+          res.writeHead(200);
+          res.end(JSON.stringify({ date: target, data: merged }));
+        } catch (e) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: "Invalid JSON body" }));
+        }
+      });
+      return;
+    }
+
+    res.writeHead(405);
+    res.end(JSON.stringify({ error: "Method not allowed" }));
+  });
+
+  server.listen(LOG_API_PORT, () => {
+    log.info(`Log API server running on http://localhost:${LOG_API_PORT}`);
+  });
+}
+
 app.whenReady().then(() => {
   createTray();
   createMainWindow();
   startIdleMonitoring();
+  startLogApiServer();
 });
 
 app.on("before-quit", () => {
@@ -190,8 +259,8 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-ipcMain.on("save-timers", (_event, updatedTimers) => {
-  fs.writeFileSync(timerFilePath, JSON.stringify(updatedTimers, null, 2));
+ipcMain.on("save-timers", (_event, updatedTimers, dateKey) => {
+  saveTimers(updatedTimers, dateKey);
 });
 
 ipcMain.on("save-config", (_event, config) => {

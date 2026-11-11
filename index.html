@@ -98,6 +98,33 @@
         background-color: #3a3a3a;
         color: #ffffff;
       }
+      .date-nav {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        margin: 10px 0;
+      }
+      .date-nav .date-label {
+        font-size: 1.3rem;
+        font-weight: 600;
+        min-width: 200px;
+        text-align: center;
+        color: #363636;
+      }
+      body.dark .date-nav .date-label {
+        color: #e0e0e0;
+      }
+      .date-nav .arrow-btn {
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+      }
+
       #on-meeting-label {
         cursor: pointer;
         border-radius: 8px;
@@ -215,6 +242,29 @@
         >
           <span class="icon is-small">
             <i class="fas fa-moon"></i>
+          </span>
+        </button>
+      </div>
+      <div class="date-nav">
+        <button
+          class="button is-light arrow-btn"
+          aria-label="Previous day"
+          title="Previous day"
+          onclick="navigateDay(-1)"
+        >
+          <span class="icon">
+            <i class="fas fa-chevron-left"></i>
+          </span>
+        </button>
+        <span class="date-label" id="current-date-label"></span>
+        <button
+          class="button is-light arrow-btn"
+          aria-label="Next day"
+          title="Next day"
+          onclick="navigateDay(1)"
+        >
+          <span class="icon">
+            <i class="fas fa-chevron-right"></i>
           </span>
         </button>
       </div>

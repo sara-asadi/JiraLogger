@@ -1,4 +1,4 @@
-const { loadTimers, clearTimers } = require("./fileManager");
+const { loadTimers, clearTimers, getTodayKey } = require("./fileManager");
 const {
   fetchOpenSprintIssues,
   logTimeForWorkItem,
@@ -12,6 +12,39 @@ const { ipcRenderer } = require("electron");
 
 const timers = {};
 let onGoingIssueKey = null;
+let selectedDate = getTodayKey();
+
+function parseDateKey(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function formatDateKey(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function formatDateDisplay(key) {
+  const date = parseDateKey(key);
+  const today = getTodayKey();
+  const opts = { weekday: "short", year: "numeric", month: "short", day: "numeric" };
+  let label = date.toLocaleDateString("en-US", opts);
+  if (key === today) label += "  (Today)";
+  return label;
+}
+
+function updateDateLabel() {
+  const el = document.getElementById("current-date-label");
+  if (el) el.textContent = formatDateDisplay(selectedDate);
+}
+
+function navigateDay(offset) {
+  const current = parseDateKey(selectedDate);
+  current.setDate(current.getDate() + offset);
+  selectedDate = formatDateKey(current);
+  updateDateLabel();
+  renderIssues();
+}
 
 function toggleDarkTheme() {
   document.body.classList.toggle("dark");
@@ -58,6 +91,7 @@ window.addEventListener("DOMContentLoaded", () => {
     document.body.classList.add("dark");
   }
   setupActivityTracking();
+  updateDateLabel();
 });
 
 function escapeHtml(text) {
@@ -77,7 +111,8 @@ async function renderIssues() {
       return console.error("Element #issues-table not found!");
     }
 
-    const savedTimers = loadTimers();
+    const savedTimers = loadTimers(selectedDate);
+    const isToday = selectedDate === getTodayKey();
     tableBody.innerHTML = "";
 
     for (const item of issues) {
@@ -95,9 +130,9 @@ async function renderIssues() {
           <td>${escapeHtml(item.state)}</td>
           <td id="timer-${escapeHtml(key)}" contenteditable="true">00:00:00</td>
           <td>
-            <button class="button action is-success" id="start-${escapeHtml(key)}" onclick="startTimer('${key}')">Start</button>
-            <button class="button action is-warning is-hidden" id="stop-${escapeHtml(key)}" onclick="stopTimer('${key}')">Stop</button>
-            <button class="button action is-danger" id="reset-${escapeHtml(key)}" onclick="resetTimer('${key}')">Reset</button>
+            <button class="button action is-success${isToday ? "" : " is-disabled"}" id="start-${escapeHtml(key)}" onclick="startTimer('${key}')" ${isToday ? "" : "disabled"}>Start</button>
+            <button class="button action is-warning is-hidden${isToday ? "" : " is-disabled"}" id="stop-${escapeHtml(key)}" onclick="stopTimer('${key}')" ${isToday ? "" : "disabled"}>Stop</button>
+            <button class="button action is-danger${isToday ? "" : " is-disabled"}" id="reset-${escapeHtml(key)}" onclick="resetTimer('${key}')" ${isToday ? "" : "disabled"}>Reset</button>
           </td>`;
 
       tableBody.appendChild(row);
@@ -302,7 +337,7 @@ async function logAllTimers() {
     } catch {}
   }
 
-  clearTimers();
+  clearTimers(getTodayKey());
 }
 
 function startTimer(key) {
@@ -444,7 +479,7 @@ async function saveTimers() {
         return t.time > 0;
       })
     );
-    ipcRenderer.send("save-timers", activeTimers);
+    ipcRenderer.send("save-timers", activeTimers, selectedDate);
   } catch (err) {
     console.error("Failed to save timers:", err);
   }
@@ -512,3 +547,4 @@ window.submitSubtask = submitSubtask;
 window.openSubtaskForm = openSubtaskForm;
 window.closeSubtaskModal = closeSubtaskModal;
 window.toggleDarkTheme = toggleDarkTheme;
+window.navigateDay = navigateDay;
