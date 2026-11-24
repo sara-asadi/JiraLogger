@@ -1,9 +1,19 @@
 const fs = require("fs");
 const path = require("path");
+let electronApp;
+try {
+  electronApp = require("electron").app;
+} catch {}
 
-const logsDir = path.join(__dirname, "logs");
+function getLogsDir() {
+  if (electronApp && electronApp.isReady()) {
+    return path.join(electronApp.getPath("userData"), "logs");
+  }
+  return path.join(__dirname, "logs");
+}
 
 function ensureLogsDir() {
+  const logsDir = getLogsDir();
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
   }
@@ -17,7 +27,7 @@ function getTodayKey() {
 
 function getLogFilePath(dateKey) {
   ensureLogsDir();
-  return path.join(logsDir, `${dateKey}.json`);
+  return path.join(getLogsDir(), `${dateKey}.json`);
 }
 
 function loadTimers(dateKey) {
@@ -29,6 +39,34 @@ function loadTimers(dateKey) {
       return JSON.parse(fs.readFileSync(filePath, "utf8"));
     } catch (error) {
       console.error("Error loading timers:", error);
+    }
+  }
+
+  // Read logs created by older versions from the application directory once.
+  const legacyPath = path.join(__dirname, "logs", `${key}.json`);
+  if (legacyPath !== filePath && fs.existsSync(legacyPath)) {
+    try {
+      const legacyData = JSON.parse(fs.readFileSync(legacyPath, "utf8"));
+      saveTimers(legacyData, key);
+      return legacyData;
+    } catch (error) {
+      console.error("Error loading legacy timers:", error);
+    }
+  }
+
+  // Migrate the pre multi-day log file to today's date on first access.
+  if (key === getTodayKey()) {
+    const singleDayPath = path.join(__dirname, "jiraLogger.json");
+    if (singleDayPath !== filePath && fs.existsSync(singleDayPath)) {
+      try {
+        const oldData = JSON.parse(fs.readFileSync(singleDayPath, "utf8"));
+        if (oldData && typeof oldData === "object" && Object.keys(oldData).length) {
+          saveTimers(oldData, key);
+          return oldData;
+        }
+      } catch (error) {
+        console.error("Error loading legacy single-day timers:", error);
+      }
     }
   }
 
@@ -78,6 +116,7 @@ function deleteDayLog(dateKey) {
 
 function listLogs() {
   ensureLogsDir();
+  const logsDir = getLogsDir();
   try {
     return fs
       .readdirSync(logsDir)

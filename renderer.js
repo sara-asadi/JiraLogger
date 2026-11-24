@@ -1,4 +1,4 @@
-const { loadTimers, clearTimers, getTodayKey } = require("./fileManager");
+const { getTodayKey } = require("./fileManager");
 const {
   fetchOpenSprintIssues,
   logTimeForWorkItem,
@@ -13,6 +13,7 @@ const { ipcRenderer } = require("electron");
 const timers = {};
 let onGoingIssueKey = null;
 let selectedDate = getTodayKey();
+let isChangingDay = false;
 
 function parseDateKey(key) {
   const [y, m, d] = key.split("-").map(Number);
@@ -38,12 +39,31 @@ function updateDateLabel() {
   if (el) el.textContent = formatDateDisplay(selectedDate);
 }
 
-function navigateDay(offset) {
-  const current = parseDateKey(selectedDate);
-  current.setDate(current.getDate() + offset);
-  selectedDate = formatDateKey(current);
-  updateDateLabel();
-  renderIssues();
+async function navigateDay(offset) {
+  if (isChangingDay) return;
+  isChangingDay = true;
+  setIssuesLoading(true);
+
+  try {
+    stopAllRunningTimers();
+    await saveTimers();
+    const current = parseDateKey(selectedDate);
+    current.setDate(current.getDate() + offset);
+    selectedDate = formatDateKey(current);
+    await renderIssues();
+  } finally {
+    isChangingDay = false;
+  }
+}
+
+function setIssuesLoading(isLoading) {
+  const container = document.querySelector(".table-container");
+  const loading = document.getElementById("table-loading");
+  if (container) {
+    container.classList.toggle("is-loading", isLoading);
+    container.setAttribute("aria-busy", String(isLoading));
+  }
+  if (loading) loading.classList.toggle("is-active", isLoading);
 }
 
 function toggleDarkTheme() {
@@ -103,17 +123,27 @@ function escapeHtml(text) {
 }
 
 async function renderIssues() {
-  try {
-    const issues = await fetchOpenSprintIssues();
+  setIssuesLoading(true);
+  const tableBody = document.getElementById("issues-table");
+  updateDateLabel();
 
-    const tableBody = document.getElementById("issues-table");
+  try {
+    const [issues, savedTimers] = await Promise.all([
+      fetchOpenSprintIssues(),
+      ipcRenderer.invoke("load-timers", selectedDate),
+    ]);
+
     if (!tableBody) {
       return console.error("Element #issues-table not found!");
     }
 
-    const savedTimers = loadTimers(selectedDate);
-    const isToday = selectedDate === getTodayKey();
     tableBody.innerHTML = "";
+
+    for (const timer of Object.values(timers)) {
+      if (timer.interval) clearInterval(timer.interval);
+    }
+    for (const key of Object.keys(timers)) delete timers[key];
+    onGoingIssueKey = null;
 
     for (const item of issues) {
       const key = item.key;
@@ -130,23 +160,24 @@ async function renderIssues() {
           <td>${escapeHtml(item.state)}</td>
           <td id="timer-${escapeHtml(key)}" contenteditable="true">00:00:00</td>
           <td>
-            <button class="button action is-success${isToday ? "" : " is-disabled"}" id="start-${escapeHtml(key)}" onclick="startTimer('${key}')" ${isToday ? "" : "disabled"}>Start</button>
-            <button class="button action is-warning is-hidden${isToday ? "" : " is-disabled"}" id="stop-${escapeHtml(key)}" onclick="stopTimer('${key}')" ${isToday ? "" : "disabled"}>Stop</button>
-            <button class="button action is-danger${isToday ? "" : " is-disabled"}" id="reset-${escapeHtml(key)}" onclick="resetTimer('${key}')" ${isToday ? "" : "disabled"}>Reset</button>
+            <button class="button action is-success" id="start-${escapeHtml(key)}" onclick="startTimer('${key}')">Start</button>
+            <button class="button action is-warning is-hidden" id="stop-${escapeHtml(key)}" onclick="stopTimer('${key}')">Stop</button>
+            <button class="button action is-danger" id="reset-${escapeHtml(key)}" onclick="resetTimer('${key}')">Reset</button>
           </td>`;
 
       tableBody.appendChild(row);
 
-      if (!timers[key]) {
-        timers[key] = {
-          time: savedTimers[key]?.time || 0,
-          interval: null,
-          title: item.title || "Unknown",
-        };
-      }
+      timers[key] = {
+        time: Number(savedTimers[key]?.time) || 0,
+        interval: null,
+        title: item.title || "Unknown",
+        comment: savedTimers[key]?.comment,
+      };
       updateTimerDisplay(key);
     }
+    setIssuesLoading(false);
   } catch (error) {
+    setIssuesLoading(false);
     console.error("Failed to load issues:", error);
     if (error.isAuthError) {
       openCredentialsModal(
@@ -337,7 +368,7 @@ async function logAllTimers() {
     } catch {}
   }
 
-  clearTimers(getTodayKey());
+  await ipcRenderer.invoke("clear-timers", selectedDate);
 }
 
 function startTimer(key) {
@@ -382,6 +413,7 @@ function resetTimer(key) {
   stopTimer(key);
   timers[key].time = 0;
   updateTimerDisplay(key);
+  saveTimers();
 }
 
 function getTimerTimeFromText(key) {
@@ -474,12 +506,14 @@ async function submitCredentials() {
 async function saveTimers() {
   try {
     const activeTimers = Object.fromEntries(
-      Object.entries(timers).filter(([key, t]) => {
+      Object.entries(timers).map(([key, t]) => {
         t.time = getTimerTimeFromText(key);
-        return t.time > 0;
+        const time = Number.isFinite(t.time) ? Math.max(0, t.time) : 0;
+        t.time = time;
+        return [key, { time, title: t.title, comment: t.comment }];
       })
     );
-    ipcRenderer.send("save-timers", activeTimers, selectedDate);
+    await ipcRenderer.invoke("save-timers", activeTimers, selectedDate);
   } catch (err) {
     console.error("Failed to save timers:", err);
   }
@@ -511,11 +545,6 @@ ipcRenderer.on("load-finished", () => {
   renderIssues();
 });
 
-ipcRenderer.on("load-timers", (_event, saved) => {
-  Object.assign(timers, saved);
-  Object.keys(saved).forEach(updateTimerDisplay);
-});
-
 ipcRenderer.on("show-config-modal", () => {
   openCredentialsModal();
 });
@@ -530,6 +559,12 @@ ipcRenderer.on("stop-timer", () => {
 
 ipcRenderer.on("saving-timers", () => {
   saveTimers();
+});
+
+document.addEventListener("focusout", (event) => {
+  if (event.target.matches("[id^='timer-'][contenteditable='true']")) {
+    saveTimers();
+  }
 });
 
 window.closeIdleAlert = closeIdleAlert;

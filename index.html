@@ -125,6 +125,57 @@
         padding: 0;
       }
 
+      .table-container {
+        position: relative;
+        min-height: 160px;
+      }
+      .table-container.is-loading {
+        pointer-events: none;
+      }
+      .table-container table {
+        transition: opacity 160ms ease;
+      }
+      .table-container.is-loading table {
+        opacity: 0.42;
+      }
+      .table-loading {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        color: #485fc7;
+        background: rgba(255, 255, 255, 0.82);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 160ms ease, visibility 160ms ease;
+      }
+      .table-loading.is-active {
+        opacity: 1;
+        visibility: visible;
+      }
+      .table-loading-spinner {
+        width: 22px;
+        height: 22px;
+        border: 3px solid rgba(72, 95, 199, 0.22);
+        border-top-color: #485fc7;
+        border-radius: 50%;
+        animation: jira-loader-spin 700ms linear infinite;
+      }
+      body.dark .table-loading {
+        color: #b8c2ff;
+        background: rgba(18, 18, 18, 0.82);
+      }
+      body.dark .table-loading-spinner {
+        border-color: rgba(184, 194, 255, 0.25);
+        border-top-color: #b8c2ff;
+      }
+      @keyframes jira-loader-spin {
+        to { transform: rotate(360deg); }
+      }
+
       #on-meeting-label {
         cursor: pointer;
         border-radius: 8px;
@@ -288,6 +339,10 @@
         </div>
 
         <div class="table-container">
+          <div class="table-loading" id="table-loading" role="status" aria-live="polite">
+            <span class="table-loading-spinner" aria-hidden="true"></span>
+            <span>Loading issues…</span>
+          </div>
           <table class="table is-striped is-hoverable">
             <thead>
               <tr>

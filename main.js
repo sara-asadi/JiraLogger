@@ -259,8 +259,17 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-ipcMain.on("save-timers", (_event, updatedTimers, dateKey) => {
+ipcMain.handle("save-timers", (_event, updatedTimers, dateKey) => {
   saveTimers(updatedTimers, dateKey);
+  return true;
+});
+
+ipcMain.handle("load-timers", (_event, dateKey) => loadTimers(dateKey));
+
+ipcMain.handle("clear-timers", (_event, dateKey) => {
+  const target = dateKey || getTodayKey();
+  const deleted = deleteDayLog(target);
+  return deleted;
 });
 
 ipcMain.on("save-config", (_event, config) => {
